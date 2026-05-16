@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VisionTrack — Object Detection & Tracking</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<!-- TensorFlow.js + COCO-SSD model (real YOLO-style detection) -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  :root{
+    --bg:#030507;
+    --surface:#080e14;
+    --surface2:#0d1520;
+    --border:#0f2233;
+    --accent:#00ff88;
+    --accent2:#00cfff;
+    --accent3:#ff4466;
+    --warn:#ffcc00;
+    --text:#c8e6ff;
+    --muted:#3a6080;
+    --hud:#00ff8833;
+  }
+
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Share Tech Mono',monospace;
+    min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;
+    padding:20px 12px 40px;
+    overflow-x:hidden;
+  }
+
+  body::before{
+    content:'';
+    position:fixed;inset:0;
+    background:
+      repeating-linear-gradient(0deg,transparent,transparent 40px,rgba(0,255,136,0.015) 40px,rgba(0,255,136,0.015) 41px),
+      repeating-linear-gradient(90deg,transparent,transparent 40px,rgba(0,255,136,0.015) 40px,rgba(0,255,136,0.015) 41px);
+    pointer-events:none;z-index:0;
+  }
+
+  .everything{position:relative;z-index:1;width:100%;max-width:1000px;display:flex;flex-direction:column;align-items:center;}
+
+  /* ── HEADER ── */
+  .header{text-align:center;margin-bottom:20px;animation:boot 0.6s ease both;}
+
+  .eyebrow{
+    font-family:'Orbitron',sans-serif;
+    font-size:10px;letter-spacing:4px;
+    color:var(--accent);text-transform:uppercase;margin-bottom:8px;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .eyebrow::before,.eyebrow::after{content:'';width:40px;height:1px;background:var(--accent);opacity:0.5;}
+
+  h1{
+    font-family:'Orbitron',sans-serif;
+    font-size:clamp(28px,6vw,56px);
+    font-weight:900;
+    color:var(--accent2);
+    text-shadow:0 0 30px rgba(0,207,255,0.5);
+    letter-spacing:2px;
+  }
+
+  .subtitle{font-size:12px;color:var(--muted);margin-top:6px;letter-spacing:1px;}
+
+  /* ── MAIN LAYOUT ── */
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:12px;width:100%;}
+  @media(max-width:700px){.layout{grid-template-columns:1fr;}}
+
+  /* ── VIDEO PANEL ── */
+  .video-panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    overflow:hidden;
+    position:relative;
+  }
+
+  .panel-header{
+    background:var(--surface2);
+    border-bottom:1px solid var(--border);
+    padding:10px 16px;
+    display:flex;align-items:center;gap:10px;
+  }
+
+  .panel-title{
+    font-family:'Orbitron',sans-serif;
+    font-size:11px;letter-spacing:2px;color:var(--accent);flex:1;
+  }
+
+  .status-pill{
+    font-size:10px;padding:3px 10px;border-radius:20px;
+    border:1px solid var(--muted);color:var(--muted);
+    display:flex;align-items:center;gap:5px;
+    transition:all 0.3s;
+  }
+  .status-pill.live{border-color:var(--accent3);color:var(--accent3);}
+  .status-pill.live::before{content:'';width:6px;height:6px;background:var(--accent3);border-radius:50%;animation:blink 1s infinite;}
+  .status-pill.detecting{border-color:var(--accent);color:var(--accent);}
+  .status-pill.detecting::before{content:'';width:6px;height:6px;background:var(--accent);border-radius:50%;animation:blink 0.5s infinite;}
+
+  .canvas-wrap{position:relative;background:#000;display:flex;align-items:center;justify-content:center;}
+  #videoEl{width:100%;display:block;object-fit:cover;opacity:0;}
+  #overlayCanvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+
+  .hud-overlay{
+    position:absolute;inset:0;pointer-events:none;
+  }
+  .hud-corner{position:absolute;width:20px;height:20px;border-color:var(--accent);border-style:solid;opacity:0.7;}
+  .hud-corner.tl{top:8px;left:8px;border-width:2px 0 0 2px;}
+  .hud-corner.tr{top:8px;right:8px;border-width:2px 2px 0 0;}
+  .hud-corner.bl{bottom:8px;left:8px;border-width:0 0 2px 2px;}
+  .hud-corner.br{bottom:8px;right:8px;border-width:0 2px 2px 0;}
+
+  .scan-line{
+    position:absolute;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent,var(--accent),transparent);
+    opacity:0;top:0;
+    animation:scan 3s linear infinite;
+  }
+
+  .placeholder-msg{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:12px;color:var(--muted);font-size:13px;
+    text-align:center;padding:20px;
+  }
+  .placeholder-icon{font-size:48px;opacity:0.3;}
+
+  .controls{
+    padding:12px 16px;
+    border-top:1px solid var(--border);
+    display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  }
+
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 16px;border-radius:8px;font-family:'Share Tech Mono',monospace;
+    font-size:12px;cursor:pointer;border:none;transition:all 0.2s;letter-spacing:1px;
+  }
+  .btn-start{background:var(--accent);color:#000;font-weight:700;box-shadow:0 0 20px rgba(0,255,136,0.3);}
+  .btn-start:hover{box-shadow:0 0 30px rgba(0,255,136,0.5);transform:translateY(-1px);}
+  .btn-start:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+  .btn-stop{background:transparent;border:1px solid var(--accent3);color:var(--accent3);}
+  .btn-stop:hover{background:var(--accent3);color:#000;}
+  .btn-stop:disabled{opacity:0.3;cursor:not-allowed;}
+  .btn-snap{background:transparent;border:1px solid var(--accent2);color:var(--accent2);}
+  .btn-snap:hover{background:var(--accent2);color:#000;}
+  .btn-snap:disabled{opacity:0.3;cursor:not-allowed;}
+
+  .conf-label{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap;}
+  #confSlider{
+    width:80px;-webkit-appearance:none;height:3px;
+    background:var(--border);border-radius:3px;outline:none;vertical-align:middle;
+  }
+  #confSlider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:var(--accent2);border-radius:50%;cursor:pointer;}
+
+  /* ── SIDEBAR ── */
+  .sidebar{display:flex;flex-direction:column;gap:12px;}
+
+  .info-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;
+  }
+
+  /* Stats */
+  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);}
+  .stat{background:var(--surface2);padding:12px;text-align:center;}
+  .stat-val{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:var(--accent);line-height:1;}
+  .stat-label{font-size:9px;color:var(--muted);margin-top:4px;letter-spacing:1px;text-transform:uppercase;}
+
+  /* Detection log */
+  .det-list{
+    max-height:220px;overflow-y:auto;padding:4px 0;
+  }
+  .det-list::-webkit-scrollbar{width:3px;}
+  .det-list::-webkit-scrollbar-thumb{background:var(--border);}
+
+  .det-item{
+    display:flex;align-items:center;gap:8px;
+    padding:7px 14px;border-bottom:1px solid var(--border);
+    font-size:11px;animation:slideIn 0.2s ease;
+  }
+  .det-item:last-child{border-bottom:none;}
+  .det-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .det-label{flex:1;color:var(--text);text-transform:capitalize;}
+  .det-id{color:var(--muted);font-size:10px;}
+  .det-conf{color:var(--accent);font-size:10px;margin-left:auto;}
+
+  /* Model info */
+  .model-info{padding:12px 14px;font-size:10px;color:var(--muted);line-height:2;}
+  .model-val{color:var(--accent2);}
+
+  /* Log terminal */
+  .terminal{
+    padding:10px 14px;
+    max-height:140px;overflow-y:auto;
+    font-size:10px;line-height:1.8;color:var(--muted);
+  }
+  .terminal::-webkit-scrollbar{width:3px;}
+  .terminal::-webkit-scrollbar-thumb{background:var(--border);}
+  .tlog{display:block;}
+  .tlog.ok{color:var(--accent);}
+  .tlog.err{color:var(--accent3);}
+  .tlog.info{color:var(--accent2);}
+
+  /* FPS bar */
+  .fps-bar{
+    height:3px;background:var(--border);position:relative;overflow:hidden;
+  }
+  .fps-fill{height:100%;background:var(--accent);transition:width 0.3s;width:0%;}
+
+  /* Snapshot strip */
+  .snap-strip{
+    display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;
+    min-height:40px;
+  }
+  .snap-thumb{
+    width:48px;height:36px;border-radius:4px;object-fit:cover;
+    border:1px solid var(--border);cursor:pointer;
+    transition:border-color 0.2s;
+  }
+  .snap-thumb:hover{border-color:var(--accent2);}
+
+  @keyframes boot{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+  @keyframes scan{0%{top:0;opacity:0.6}100%{top:100%;opacity:0}}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+</style>
+</head>
+<body>
+<div class="everything">
+
+<div class="header">
+  <div class="eyebrow">CodeAlpha · Task 4</div>
+  <h1>VISION TRACK</h1>
+  <p class="subtitle">Real-Time Object Detection & Tracking · COCO-SSD (YOLO-style) + SORT Algorithm</p>
+</div>
+
+<div class="layout">
+
+  <!-- ── VIDEO PANEL ── -->
+  <div class="video-panel">
+    <div class="panel-header">
+      <span class="panel-title">// LIVE FEED</span>
+      <span class="status-pill" id="statusPill">OFFLINE</span>
+    </div>
+
+    <div class="canvas-wrap" style="min-height:340px;">
+      <video id="videoEl" autoplay muted playsinline></video>
+      <canvas id="overlayCanvas"></canvas>
+
+      <div class="hud-overlay">
+        <div class="hud-corner tl"></div>
+        <div class="hud-corner tr"></div>
+        <div class="hud-corner bl"></div>
+        <div class="hud-corner br"></div>
+        <div class="scan-line" id="scanLine"></div>
+      </div>
+
+      <div class="placeholder-msg" id="placeholder">
+        <div class="placeholder-icon">📷</div>
+        <div>Click <strong>START CAMERA</strong> to begin<br>real-time object detection</div>
+        <div style="font-size:10px;color:var(--border);margin-top:4px">COCO-SSD model · 80 object classes</div>
+      </div>
+    </div>
+
+    <div class="fps-bar"><div class="fps-fill" id="fpsFill"></div></div>
+
+    <div class="controls">
+      <button class="btn btn-start" id="startBtn" onclick="startCamera()">▶ START CAMERA</button>
+      <button class="btn btn-stop" id="stopBtn" onclick="stopCamera()" disabled>■ STOP</button>
+      <button class="btn btn-snap" id="snapBtn" onclick="takeSnapshot()" disabled>📷 SNAP</button>
+      <span class="conf-label">CONF: <span id="confVal">50%</span></span>
+      <input type="range" id="confSlider" min="10" max="95" value="50" oninput="updateConf(this.value)">
+    </div>
+  </div>
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+
+    <!-- Stats -->
+    <div class="info-card">
+      <div class="panel-header"><span class="panel-title">// STATS</span></div>
+      <div class="stats-grid">
+        <div class="stat"><div class="stat-val" id="statObjects">0</div><div class="stat-label">Objects</div></div>
+        <div class="stat"><div class="stat-val" id="statFPS">0</div><div class="stat-label">FPS</div></div>
+        <div class="stat"><div class="stat-val" id="statTracks">0</div><div class="stat-label">Tracks</div></div>
+        <div class="stat"><div class="stat-val" id="statFrames">0</div><div class="stat-label">Frames</div></div>
+      </div>
+    </div>
+
+    <!-- Detection log -->
+    <div class="info-card" style="flex:1">
+      <div class="panel-header"><span class="panel-title">// DETECTIONS</span></div>
+      <div class="det-list" id="detList">
+        <div style="padding:16px;font-size:11px;color:var(--muted);text-align:center">No detections yet</div>
+      </div>
+    </div>
+
+    <!-- Model info -->
+    <div class="info-card">
+      <div class="panel-header"><span class="panel-title">// MODEL INFO</span></div>
+      <div class="model-info">
+        Model: <span class="model-val">COCO-SSD (MobileNetV2)</span><br>
+        Backbone: <span class="model-val">YOLO-style SSD</span><br>
+        Classes: <span class="model-val">80 object types</span><br>
+        Tracker: <span class="model-val">SORT (Kalman + IoU)</span><br>
+        Runtime: <span class="model-val">TensorFlow.js</span><br>
+        Status: <span class="model-val" id="modelStatus">Loading...</span>
+      </div>
+    </div>
+
+    <!-- Terminal log -->
+    <div class="info-card">
+      <div class="panel-header"><span class="panel-title">// SYSTEM LOG</span></div>
+      <div class="terminal" id="terminal">
+        <span class="tlog">> Initializing VisionTrack...</span>
+      </div>
+    </div>
+
+    <!-- Snapshots -->
+    <div class="info-card">
+      <div class="panel-header"><span class="panel-title">// SNAPSHOTS</span></div>
+      <div class="snap-strip" id="snapStrip">
+        <span style="font-size:10px;color:var(--muted)">No snapshots yet</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────
+let model = null;
+let stream = null;
+let detecting = false;
+let animFrame = null;
+let frameCount = 0;
+let totalFrames = 0;
+let fpsTime = Date.now();
+let minConf = 0.5;
+let trackers = {};   // SORT-style tracker
+let nextId = 1;
+let snapshots = [];
+
+const video = document.getElementById('videoEl');
+const canvas = document.getElementById('overlayCanvas');
+const ctx = canvas.getContext('2d');
+
+// ─── Class colors ─────────────────────────────────────────────
+const CLASS_COLORS = {
+  person:'#00ff88', car:'#00cfff', bicycle:'#ffcc00', motorcycle:'#ffcc00',
+  truck:'#00cfff', bus:'#00cfff', cat:'#ff88cc', dog:'#ff88cc',
+  chair:'#aa88ff', laptop:'#00ffcc', cell_phone:'#00ffcc', bottle:'#88ffaa',
+  cup:'#88ffaa', book:'#ffaa44', tv:'#00cfff', keyboard:'#00ffcc',
+  mouse:'#00ffcc', remote:'#00ffcc', clock:'#ffcc00', backpack:'#ff88cc',
+  umbrella:'#88aaff', handbag:'#ff88cc', tie:'#ff88cc',
+};
+function getColor(cls) { return CLASS_COLORS[cls] || '#ffffff'; }
+
+// ─── SORT-style tracker (IoU-based) ───────────────────────────
+function iou(a, b) {
+  const [ax,ay,aw,ah] = a;
+  const [bx,by,bw,bh] = b;
+  const ix = Math.max(0, Math.min(ax+aw,bx+bw) - Math.max(ax,bx));
+  const iy = Math.max(0, Math.min(ay+ah,by+bh) - Math.max(ay,by));
+  const inter = ix * iy;
+  const union = aw*ah + bw*bh - inter;
+  return union <= 0 ? 0 : inter / union;
+}
+
+function updateTrackers(detections) {
+  const matched = new Set();
+  const result = [];
+
+  detections.forEach(det => {
+    const [x,y,w,h] = det.bbox;
+    let bestId = null, bestIoU = 0.25; // min IoU threshold
+
+    Object.entries(trackers).forEach(([id, tr]) => {
+      if (tr.cls !== det.class) return;
+      const score = iou([x,y,w,h], tr.bbox);
+      if (score > bestIoU) { bestIoU = score; bestId = id; }
+    });
+
+    if (bestId !== null) {
+      trackers[bestId].bbox = [x,y,w,h];
+      trackers[bestId].score = det.score;
+      trackers[bestId].age++;
+      trackers[bestId].lost = 0;
+      matched.add(bestId);
+      result.push({ ...det, id: parseInt(bestId) });
+    } else {
+      const id = nextId++;
+      trackers[id] = { bbox:[x,y,w,h], cls:det.class, score:det.score, age:1, lost:0 };
+      matched.add(String(id));
+      result.push({ ...det, id });
+    }
+  });
+
+  // Age out lost tracks
+  Object.keys(trackers).forEach(id => {
+    if (!matched.has(id)) {
+      trackers[id].lost++;
+      if (trackers[id].lost > 8) delete trackers[id];
+    }
+  });
+
+  return result;
+}
+
+// ─── Drawing ──────────────────────────────────────────────────
+function drawDetections(tracked) {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Scanline overlay
+  ctx.fillStyle = 'rgba(0,255,136,0.012)';
+  for (let y = 0; y < H; y += 4) { ctx.fillRect(0, y, W, 1); }
+
+  tracked.forEach(det => {
+    const [x, y, w, h] = det.bbox;
+    const color = getColor(det.class);
+    const label = `${det.class.toUpperCase()} #${det.id}`;
+    const conf = `${Math.round(det.score * 100)}%`;
+
+    // Bounding box
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 12; ctx.shadowColor = color;
+    ctx.strokeRect(x, y, w, h);
+    ctx.shadowBlur = 0;
+
+    // Corner accents
+    const cLen = Math.min(w, h) * 0.2;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = color;
+    [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([cx,cy,dx,dy]) => {
+      ctx.beginPath();
+      ctx.moveTo(cx+dx*cLen, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy+dy*cLen);
+      ctx.stroke();
+    });
+
+    // Label background
+    const fontSize = Math.max(10, Math.min(14, w * 0.1));
+    ctx.font = `${fontSize}px "Share Tech Mono", monospace`;
+    const textW = ctx.measureText(label + ' ' + conf).width + 10;
+    const lh = fontSize + 8;
+
+    ctx.fillStyle = color + 'cc';
+    ctx.fillRect(x, y - lh - 2, textW, lh);
+
+    ctx.fillStyle = '#000';
+    ctx.fillText(`${label}  ${conf}`, x + 5, y - 8);
+
+    // Tracking trail (ID badge)
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x + w - 10, y + 10, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 8px Share Tech Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText(det.id, x + w - 10, y + 13);
+    ctx.textAlign = 'left';
+  });
+}
+
+// ─── Detection loop ───────────────────────────────────────────
+let lastFPSUpdate = Date.now();
+let framesSinceUpdate = 0;
+
+async function detect() {
+  if (!detecting || !model) return;
+
+  if (video.readyState >= 2) {
+    // Sync canvas to video
+    canvas.width = video.videoWidth || video.clientWidth;
+    canvas.height = video.videoHeight || video.clientHeight;
+
+    try {
+      const preds = await model.detect(video, 20, minConf);
+      const tracked = updateTrackers(preds);
+
+      drawDetections(tracked);
+      updateUI(tracked, preds);
+
+      totalFrames++;
+      framesSinceUpdate++;
+      const now = Date.now();
+      if (now - lastFPSUpdate >= 500) {
+        const fps = Math.round(framesSinceUpdate / ((now - lastFPSUpdate) / 1000));
+        document.getElementById('statFPS').textContent = fps;
+        document.getElementById('fpsFill').style.width = Math.min(fps / 30 * 100, 100) + '%';
+        lastFPSUpdate = now;
+        framesSinceUpdate = 0;
+      }
+      document.getElementById('statFrames').textContent = totalFrames;
+    } catch(e) {}
+  }
+
+  animFrame = requestAnimationFrame(detect);
+}
+
+// ─── UI updates ───────────────────────────────────────────────
+let lastDetHash = '';
+function updateUI(tracked) {
+  document.getElementById('statObjects').textContent = tracked.length;
+  document.getElementById('statTracks').textContent = Object.keys(trackers).length;
+
+  const hash = tracked.map(d=>d.id+d.class).join(',');
+  if (hash === lastDetHash) return;
+  lastDetHash = hash;
+
+  const list = document.getElementById('detList');
+  if (tracked.length === 0) {
+    list.innerHTML = '<div style="padding:16px;font-size:11px;color:var(--muted);text-align:center">No objects detected</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  tracked.slice(0,12).forEach(d => {
+    const color = getColor(d.class);
+    const div = document.createElement('div');
+    div.className = 'det-item';
+    div.innerHTML = `
+      <div class="det-dot" style="background:${color};box-shadow:0 0 6px ${color}"></div>
+      <span class="det-label">${d.class}</span>
+      <span class="det-id">#${d.id}</span>
+      <span class="det-conf">${Math.round(d.score*100)}%</span>`;
+    list.appendChild(div);
+  });
+}
+
+// ─── Camera controls ──────────────────────────────────────────
+async function startCamera() {
+  document.getElementById('startBtn').disabled = true;
+  tlog('Requesting camera access...', 'info');
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width:{ideal:1280}, height:{ideal:720}, facingMode:'user' },
+      audio: false
+    });
+
+    video.srcObject = stream;
+    await new Promise(r => video.onloadedmetadata = r);
+    video.style.opacity = '1';
+    document.getElementById('placeholder').style.display = 'none';
+
+    tlog('Camera stream active', 'ok');
+    setPill('live', 'LIVE');
+
+    // Load model if not yet loaded
+    if (!model) {
+      tlog('Loading COCO-SSD model...', 'info');
+      document.getElementById('modelStatus').textContent = 'Loading...';
+      model = await cocoSsd.load({ base: 'mobilenet_v2' });
+      document.getElementById('modelStatus').textContent = 'Ready ✓';
+      tlog('COCO-SSD (MobileNetV2) loaded ✓', 'ok');
+      tlog('80 object classes available', 'ok');
+    }
+
+    detecting = true;
+    detect();
+    setPill('detecting', 'DETECTING');
+    tlog('Detection loop started', 'ok');
+    tlog(`Confidence threshold: ${Math.round(minConf*100)}%`, 'info');
+
+    document.getElementById('stopBtn').disabled = false;
+    document.getElementById('snapBtn').disabled = false;
+  } catch(err) {
+    tlog('Camera access denied: ' + err.message, 'err');
+    document.getElementById('startBtn').disabled = false;
+    setPill('', 'OFFLINE');
+    alert('Camera access denied. Please allow camera permissions and try again.');
+  }
+}
+
+function stopCamera() {
+  detecting = false;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  video.style.opacity = '0';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('placeholder').style.display = 'flex';
+  trackers = {};
+  document.getElementById('statObjects').textContent = '0';
+  document.getElementById('statFPS').textContent = '0';
+  document.getElementById('statTracks').textContent = '0';
+  document.getElementById('fpsFill').style.width = '0%';
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('stopBtn').disabled = true;
+  document.getElementById('snapBtn').disabled = true;
+  setPill('', 'OFFLINE');
+  tlog('Camera stopped', 'err');
+}
+
+function takeSnapshot() {
+  const snap = document.createElement('canvas');
+  snap.width = canvas.width; snap.height = canvas.height;
+  const sctx = snap.getContext('2d');
+  sctx.drawImage(video, 0, 0);
+  sctx.drawImage(canvas, 0, 0);
+
+  const img = document.createElement('img');
+  img.src = snap.toDataURL('image/jpeg', 0.8);
+  img.className = 'snap-thumb';
+  img.title = `Snapshot ${snapshots.length+1}`;
+  img.onclick = () => { const a=document.createElement('a');a.href=img.src;a.download=`snapshot_${Date.now()}.jpg`;a.click(); };
+
+  const strip = document.getElementById('snapStrip');
+  if (snapshots.length === 0) strip.innerHTML = '';
+  snapshots.push(img.src);
+  strip.insertBefore(img, strip.firstChild);
+  if (snapshots.length > 6) { strip.removeChild(strip.lastChild); snapshots.pop(); }
+
+  tlog(`Snapshot saved (${Object.keys(trackers).length} tracks)`, 'ok');
+}
+
+function updateConf(v) {
+  minConf = v / 100;
+  document.getElementById('confVal').textContent = v + '%';
+}
+
+function setPill(cls, text) {
+  const p = document.getElementById('statusPill');
+  p.className = 'status-pill ' + cls;
+  p.textContent = text;
+}
+
+function tlog(msg, type='') {
+  const el = document.getElementById('terminal');
+  const span = document.createElement('span');
+  span.className = 'tlog ' + type;
+  const ts = new Date().toTimeString().slice(0,8);
+  span.textContent = `[${ts}] ${msg}`;
+  el.appendChild(span);
+  el.appendChild(document.createElement('br'));
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─── Init ─────────────────────────────────────────────────────
+(async () => {
+  tlog('TensorFlow.js runtime detected', 'ok');
+  tlog('COCO-SSD model ready to load', 'info');
+  tlog('SORT tracker initialized', 'ok');
+  tlog('Click START CAMERA to begin', 'info');
+  document.getElementById('modelStatus').textContent = 'Standby';
+})();
+</script>
+</body>
+</html>

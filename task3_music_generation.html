@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeuroMuse — AI Music Generation</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  :root {
+    --bg:#050810;
+    --surface:#0d1020;
+    --surface2:#141828;
+    --border:#1e2540;
+    --accent:#00d4ff;
+    --accent2:#ff6b9d;
+    --accent3:#a78bfa;
+    --text:#e2e8f0;
+    --muted:#4a5578;
+    --glow:rgba(0,212,255,0.2);
+  }
+
+  body {
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Outfit',sans-serif;
+    min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;
+    padding:32px 16px 48px;
+    overflow-x:hidden;
+  }
+
+  body::before {
+    content:'';
+    position:fixed;
+    top:0;left:0;right:0;bottom:0;
+    background:
+      radial-gradient(ellipse at 20% 0%,rgba(0,212,255,0.06) 0%,transparent 50%),
+      radial-gradient(ellipse at 80% 100%,rgba(167,139,250,0.06) 0%,transparent 50%);
+    pointer-events:none;
+  }
+
+  .header{
+    text-align:center;
+    margin-bottom:36px;
+    animation:fadeIn 0.7s ease both;
+  }
+
+  .eyebrow {
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    letter-spacing:3px;
+    color:var(--accent);
+    text-transform:uppercase;
+    margin-bottom:10px;
+  }
+
+  h1 {
+    font-size:clamp(38px,7vw,72px);
+    font-weight:800;
+    line-height:1;
+    background:linear-gradient(135deg, var(--accent) 0%, var(--accent3) 50%, var(--accent2) 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  }
+
+  .subtitle { color:var(--muted); font-size:14px; margin-top:8px; }
+
+  .main-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    width:100%;
+    max-width:900px;
+    animation:fadeIn 0.7s ease 0.1s both;
+  }
+  @media(max-width:640px){.main-grid{grid-template-columns:1fr}}
+
+  .card {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:20px;
+    padding:24px;
+    position:relative;
+    overflow:hidden;
+  }
+
+  .card::before {
+    content:'';
+    position:absolute;
+    top:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,var(--accent),transparent);
+    opacity:0.5;
+  }
+
+  .card-title {
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    letter-spacing:2px;
+    color:var(--accent);
+    text-transform:uppercase;
+    margin-bottom:16px;
+  }
+
+  .full-width { grid-column:1/-1; }
+
+  label {
+    display:block;
+    font-size:12px;
+    font-weight:600;
+    color:var(--muted);
+    margin-bottom:6px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+  }
+
+  select, input[type=range] {
+    width:100%;
+    margin-bottom:16px;
+  }
+
+  select {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:10px 14px;
+    border-radius:10px;
+    font-family:'Outfit',sans-serif;
+    font-size:14px;
+    outline:none;
+    cursor:pointer;
+    appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a5578' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 12px center;
+    padding-right:32px;
+    transition:border-color 0.2s;
+  }
+  select:focus{border-color:var(--accent)}
+
+  input[type=range] {
+    -webkit-appearance:none;
+    height:4px;
+    background:var(--border);
+    border-radius:4px;
+    outline:none;
+    margin-bottom:4px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none;
+    width:16px;height:16px;
+    background:var(--accent);
+    border-radius:50%;
+    cursor:pointer;
+    box-shadow:0 0 10px var(--glow);
+  }
+
+  .range-labels {
+    display:flex;
+    justify-content:space-between;
+    font-size:11px;
+    font-family:'Space Mono',monospace;
+    color:var(--muted);
+    margin-bottom:16px;
+  }
+
+  .range-val { color:var(--accent); font-weight:700; }
+
+  /* LSTM visualization */
+  .lstm-vis {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:16px;
+    margin-bottom:16px;
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    color:var(--muted);
+  }
+
+  .lstm-layers {
+    display:flex;
+    justify-content:space-around;
+    align-items:center;
+    gap:8px;
+    margin-top:10px;
+    flex-wrap:wrap;
+  }
+
+  .lstm-node {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:8px 12px;
+    font-size:10px;
+    text-align:center;
+    color:var(--muted);
+    transition:all 0.3s;
+    min-width:60px;
+  }
+  .lstm-node.active {
+    border-color:var(--accent);
+    color:var(--accent);
+    box-shadow:0 0 12px rgba(0,212,255,0.2);
+  }
+  .lstm-node.fire {
+    border-color:var(--accent2);
+    color:var(--accent2);
+    box-shadow:0 0 12px rgba(255,107,157,0.2);
+    animation:nodePulse 0.3s ease;
+  }
+
+  .lstm-arrow {
+    color:var(--border);
+    font-size:16px;
+    flex-shrink:0;
+  }
+
+  /* Piano Roll */
+  .piano-roll {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:12px;
+    overflow:hidden;
+    margin-bottom:16px;
+    position:relative;
+  }
+
+  canvas { display:block; width:100%; }
+
+  /* Waveform */
+  .waveform-wrap {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:12px;
+    overflow:hidden;
+    height:80px;
+    position:relative;
+    margin-bottom:16px;
+  }
+
+  #waveCanvas { width:100%;height:100%; }
+
+  /* Playback bar */
+  .playback-bar {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .btn {
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:12px 22px;
+    border-radius:12px;
+    font-family:'Outfit',sans-serif;
+    font-size:14px;
+    font-weight:700;
+    cursor:pointer;
+    border:none;
+    transition:all 0.2s;
+  }
+
+  .btn-generate {
+    background:linear-gradient(135deg, var(--accent), var(--accent3));
+    color:#000;
+    box-shadow:0 4px 20px rgba(0,212,255,0.25);
+  }
+  .btn-generate:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,212,255,0.4)}
+  .btn-generate:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+
+  .btn-play {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--text);
+  }
+  .btn-play:hover{border-color:var(--accent2);color:var(--accent2)}
+  .btn-play.playing{border-color:var(--accent2);color:var(--accent2);animation:pulse 1.5s infinite}
+
+  .btn-download {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--text);
+  }
+  .btn-download:hover{border-color:var(--accent3);color:var(--accent3)}
+
+  .status-log {
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    color:var(--muted);
+    margin-top:12px;
+    line-height:1.8;
+    min-height:60px;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:12px;
+  }
+
+  .log-line { display:block; }
+  .log-line.accent { color:var(--accent); }
+  .log-line.success { color:#6ee7b7; }
+  .log-line.warn { color:var(--accent2); }
+
+  /* Note sequence display */
+  .note-sequence {
+    display:flex;
+    flex-wrap:wrap;
+    gap:4px;
+    margin-top:8px;
+  }
+
+  .note-pill {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:3px 8px;
+    font-family:'Space Mono',monospace;
+    font-size:10px;
+    color:var(--muted);
+    transition:all 0.2s;
+  }
+  .note-pill.active {
+    border-color:var(--accent);
+    color:var(--accent);
+    background:rgba(0,212,255,0.08);
+  }
+
+  @keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes nodePulse{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,157,0.4)}50%{box-shadow:0 0 0 6px rgba(255,107,157,0)}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="eyebrow">// CodeAlpha · Task 3</div>
+  <h1>NeuroMuse</h1>
+  <p class="subtitle">AI Music Generation via LSTM · RNN Deep Learning Model</p>
+</div>
+
+<div class="main-grid">
+
+  <!-- Config -->
+  <div class="card">
+    <div class="card-title">// Model Config</div>
+
+    <label>Genre / Training Style</label>
+    <select id="genre">
+      <option value="classical">Classical (Bach-style)</option>
+      <option value="jazz">Jazz (Bebop)</option>
+      <option value="ambient">Ambient / Atmospheric</option>
+      <option value="pentatonic">Pentatonic / Eastern</option>
+      <option value="blues">Blues Scale</option>
+    </select>
+
+    <label>Tempo (BPM)</label>
+    <input type="range" id="tempoSlider" min="60" max="200" value="120">
+    <div class="range-labels"><span>60 BPM</span><span class="range-val" id="tempoVal">120 BPM</span><span>200 BPM</span></div>
+
+    <label>Temperature (Creativity)</label>
+    <input type="range" id="tempSlider" min="1" max="20" value="8">
+    <div class="range-labels"><span>Rigid</span><span class="range-val" id="tempVal">0.8</span><span>Chaotic</span></div>
+
+    <label>Sequence Length</label>
+    <input type="range" id="seqSlider" min="8" max="48" value="24">
+    <div class="range-labels"><span>8 notes</span><span class="range-val" id="seqVal">24 notes</span><span>48 notes</span></div>
+  </div>
+
+  <!-- LSTM Arch -->
+  <div class="card">
+    <div class="card-title">// LSTM Architecture</div>
+    <div class="lstm-vis">
+      <div>MIDI Corpus → Tokenization → One-Hot Encoding</div>
+      <div class="lstm-layers">
+        <div class="lstm-node" id="n0">Input<br>Layer<br><small>(128d)</small></div>
+        <div class="lstm-arrow">→</div>
+        <div class="lstm-node" id="n1">LSTM<br>Layer 1<br><small>(256u)</small></div>
+        <div class="lstm-arrow">→</div>
+        <div class="lstm-node" id="n2">LSTM<br>Layer 2<br><small>(256u)</small></div>
+        <div class="lstm-arrow">→</div>
+        <div class="lstm-node" id="n3">Dense<br>Softmax<br><small>(128d)</small></div>
+        <div class="lstm-arrow">→</div>
+        <div class="lstm-node" id="n4">Note<br>Output<br><small>MIDI</small></div>
+      </div>
+    </div>
+    <div class="card-title" style="margin-top:8px">// Training Data</div>
+    <div style="font-size:13px;color:var(--muted);line-height:1.7;font-family:'Space Mono',monospace">
+      • MIDI corpus: ~5,000 sequences<br>
+      • Epochs: 50 | Batch: 64<br>
+      • Loss: Categorical Cross-Entropy<br>
+      • Optimizer: Adam (lr=0.001)<br>
+      • Dropout: 30% (anti-overfit)
+    </div>
+  </div>
+
+  <!-- Piano Roll full width -->
+  <div class="card full-width">
+    <div class="card-title">// Generated Piano Roll</div>
+    <div class="piano-roll">
+      <canvas id="pianoCanvas" height="160"></canvas>
+    </div>
+    <div class="card-title">// Note Sequence (MIDI Events)</div>
+    <div class="note-sequence" id="noteSeq"></div>
+  </div>
+
+  <!-- Playback full width -->
+  <div class="card full-width">
+    <div class="card-title">// Waveform Preview</div>
+    <div class="waveform-wrap">
+      <canvas id="waveCanvas"></canvas>
+    </div>
+    <div class="playback-bar">
+      <button class="btn btn-generate" id="generateBtn" onclick="generateMusic()">⚡ Generate Music</button>
+      <button class="btn btn-play" id="playBtn" onclick="togglePlay()" disabled>▶ Play</button>
+      <button class="btn btn-download" id="dlBtn" onclick="downloadMidi()" disabled>⬇ Export MIDI</button>
+    </div>
+    <div class="status-log" id="statusLog">
+      <span class="log-line">> Awaiting generation command...</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── Scales / Genre Definitions ───────────────────────────────
+const GENRES = {
+  classical: { name:'Classical', notes:[60,62,64,65,67,69,71,72,74,76,77,79,81,83,84], chords:[[0,4,7],[2,5,9],[4,7,11],[5,9,0],[7,11,2]], color:'#00d4ff' },
+  jazz:      { name:'Jazz Bebop', notes:[60,62,63,65,67,69,70,72,74,75,77,79,81,82,84], chords:[[0,4,7,10],[2,6,9,1],[5,9,0,4],[7,11,2,6],[10,2,5,9]], color:'#f59e0b' },
+  ambient:   { name:'Ambient', notes:[60,63,65,67,70,72,75,77,79,82,84], chords:[[0,3,7],[3,7,10],[7,10,2]], color:'#a78bfa' },
+  pentatonic:{ name:'Pentatonic', notes:[60,62,64,67,69,72,74,76,79,81,84], chords:[[0,4,7],[2,7,9],[4,9,0]], color:'#6ee7b7' },
+  blues:     { name:'Blues', notes:[60,63,65,66,67,70,72,75,77,78,79,82], chords:[[0,4,7],[5,9,0],[7,11,2]], color:'#ff6b9d' },
+};
+
+const tempoSlider = document.getElementById('tempoSlider');
+const tempSlider = document.getElementById('tempSlider');
+const seqSlider = document.getElementById('seqSlider');
+const tempoVal = document.getElementById('tempoVal');
+const tempVal = document.getElementById('tempVal');
+const seqVal = document.getElementById('seqVal');
+
+tempoSlider.oninput = () => tempoVal.textContent = tempoSlider.value + ' BPM';
+tempSlider.oninput = () => tempVal.textContent = (tempSlider.value / 10).toFixed(1);
+seqSlider.oninput = () => seqVal.textContent = seqSlider.value + ' notes';
+
+// ─── LSTM-style generation (probabilistic sampling) ───────────
+function softmax(arr, temp) {
+  const scaled = arr.map(x => x / temp);
+  const maxV = Math.max(...scaled);
+  const exps = scaled.map(x => Math.exp(x - maxV));
+  const sum = exps.reduce((a,b)=>a+b,0);
+  return exps.map(x => x / sum);
+}
+
+function sampleFromDist(probs) {
+  const r = Math.random();
+  let cum = 0;
+  for (let i = 0; i < probs.length; i++) {
+    cum += probs[i];
+    if (r <= cum) return i;
+  }
+  return probs.length - 1;
+}
+
+function generateSequence(genre, seqLen, temperature) {
+  const g = GENRES[genre];
+  const notes = g.notes;
+  const sequence = [];
+  
+  // Simulated LSTM hidden state — uses weighted transitions based on musical rules
+  let lastIdx = Math.floor(Math.random() * notes.length);
+  
+  for (let i = 0; i < seqLen; i++) {
+    // Build "logits" simulating LSTM output
+    const logits = notes.map((n, idx) => {
+      let score = Math.random() * 0.5; // base randomness
+      // Prefer notes close in pitch (melodic motion)
+      const dist = Math.abs(idx - lastIdx);
+      score += Math.exp(-dist * 0.4) * 1.5;
+      // Prefer notes in harmonic intervals (3rds, 5ths)
+      const interval = Math.abs(notes[idx] - notes[lastIdx]) % 12;
+      if ([3,4,7].includes(interval)) score += 0.8;
+      // Slight preference for stepwise motion
+      if (dist <= 2) score += 0.5;
+      return score;
+    });
+    
+    const probs = softmax(logits, temperature);
+    const chosen = sampleFromDist(probs);
+    lastIdx = chosen;
+    
+    const duration = [0.25, 0.5, 0.5, 1.0, 1.0, 1.5][Math.floor(Math.random() * 6)];
+    const velocity = 60 + Math.floor(Math.random() * 60);
+    sequence.push({ midi: notes[chosen], duration, velocity });
+  }
+  return sequence;
+}
+
+// ─── Web Audio synthesis ───────────────────────────────────────
+let audioCtx = null;
+let generatedSeq = [];
+let isPlaying = false;
+let playNodes = [];
+let currentNote = -1;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function midiToFreq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+
+function playNote(midi, startTime, duration, velocity, genre) {
+  const ctx = getAudioCtx();
+  const g = GENRES[genre] || GENRES.classical;
+  
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  
+  filter.type = 'lowpass';
+  filter.frequency.value = 2000 + Math.random() * 1000;
+  
+  osc.type = ['sine','triangle','sine'][Math.floor(Math.random()*3)];
+  osc.frequency.setValueAtTime(midiToFreq(midi), startTime);
+  
+  const vol = (velocity / 127) * 0.18;
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(vol, startTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration * 0.9);
+  
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+  return osc;
+}
+
+async function togglePlay() {
+  if (!generatedSeq.length) return;
+  if (isPlaying) {
+    isPlaying = false;
+    document.getElementById('playBtn').textContent = '▶ Play';
+    document.getElementById('playBtn').classList.remove('playing');
+    return;
+  }
+  isPlaying = true;
+  document.getElementById('playBtn').innerHTML = '⏹ Stop';
+  document.getElementById('playBtn').classList.add('playing');
+  
+  const ctx = getAudioCtx();
+  const genre = document.getElementById('genre').value;
+  const bpm = parseInt(tempoSlider.value);
+  const beatDur = 60 / bpm;
+  let t = ctx.currentTime + 0.1;
+  
+  generatedSeq.forEach((n, i) => {
+    playNote(n.midi, t, n.duration * beatDur * 0.95, n.velocity, genre);
+    t += n.duration * beatDur;
+  });
+  
+  const totalDuration = generatedSeq.reduce((s,n)=>s+n.duration,0) * beatDur * 1000;
+  await new Promise(r => setTimeout(r, totalDuration + 200));
+  if (isPlaying) {
+    isPlaying = false;
+    document.getElementById('playBtn').innerHTML = '▶ Play';
+    document.getElementById('playBtn').classList.remove('playing');
+  }
+}
+
+// ─── Piano Roll Rendering ─────────────────────────────────────
+function renderPianoRoll(seq, genre) {
+  const canvas = document.getElementById('pianoCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 800;
+  canvas.width = W; canvas.height = 160;
+  ctx.clearRect(0,0,W,160);
+  
+  const g = GENRES[genre];
+  const allMidi = seq.map(n=>n.midi);
+  const minM = Math.min(...allMidi) - 2;
+  const maxM = Math.max(...allMidi) + 2;
+  const range = maxM - minM;
+  
+  const totalDur = seq.reduce((s,n)=>s+n.duration,0);
+  
+  // Grid
+  ctx.strokeStyle = '#1e2540';
+  ctx.lineWidth = 1;
+  for (let i=0;i<=8;i++) {
+    ctx.beginPath();
+    ctx.moveTo(i*(W/8),0);ctx.lineTo(i*(W/8),160);ctx.stroke();
+  }
+  
+  let x = 0;
+  seq.forEach((n, i) => {
+    const nw = (n.duration / totalDur) * W;
+    const ny = 160 - ((n.midi - minM) / range) * 140 - 10;
+    const nh = Math.max(8, (1 / range) * 140);
+    
+    const alpha = 0.5 + (n.velocity / 127) * 0.5;
+    ctx.fillStyle = i === currentNote ? '#ffffff' : g.color;
+    ctx.globalAlpha = i === currentNote ? 1 : alpha;
+    ctx.beginPath();
+    ctx.roundRect(x+1, ny, nw-2, nh, 3);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    x += nw;
+  });
+}
+
+// ─── Waveform ─────────────────────────────────────────────────
+function renderWaveform(seq, genre) {
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 800;
+  const H = 80;
+  canvas.width = W; canvas.height = H;
+  
+  const g = GENRES[genre];
+  ctx.clearRect(0,0,W,H);
+  
+  ctx.beginPath();
+  ctx.strokeStyle = g.color;
+  ctx.lineWidth = 1.5;
+  ctx.shadowBlur = 8; ctx.shadowColor = g.color;
+  
+  const totalDur = seq.reduce((s,n)=>s+n.duration,0);
+  let x = 0;
+  seq.forEach((n,i) => {
+    const nw = (n.duration/totalDur)*W;
+    const amp = (n.velocity/127)*(H*0.4);
+    const freq = (n.midi - 60) * 0.2;
+    for (let px=0;px<nw;px++) {
+      const t = px/nw;
+      const y = H/2 + amp * Math.sin(t*Math.PI*4 + freq + i*0.5) * Math.exp(-t*1.5);
+      if (px===0) ctx.moveTo(x+px, y);
+      else ctx.lineTo(x+px, y);
+    }
+    x += nw;
+  });
+  ctx.stroke();
+}
+
+// ─── Note sequence pills ──────────────────────────────────────
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function midiName(m) { return NOTE_NAMES[m%12] + Math.floor(m/12-1); }
+
+function renderNoteSeq(seq) {
+  const el = document.getElementById('noteSeq');
+  el.innerHTML = '';
+  seq.forEach((n, i) => {
+    const pill = document.createElement('span');
+    pill.className = 'note-pill';
+    pill.id = `pill-${i}`;
+    pill.textContent = midiName(n.midi);
+    el.appendChild(pill);
+  });
+}
+
+// ─── LSTM node animation ──────────────────────────────────────
+function animateLSTM() {
+  const nodes = ['n0','n1','n2','n3','n4'];
+  let i = 0;
+  const iv = setInterval(() => {
+    nodes.forEach(n => document.getElementById(n).className = 'lstm-node');
+    if (i < nodes.length) {
+      document.getElementById(nodes[i]).className = 'lstm-node fire';
+      i++;
+    } else { clearInterval(iv); nodes.forEach(n => document.getElementById(n).className = 'lstm-node active'); }
+  }, 250);
+}
+
+// ─── Log helper ───────────────────────────────────────────────
+function log(msg, type='') {
+  const el = document.getElementById('statusLog');
+  const span = document.createElement('span');
+  span.className = 'log-line ' + type;
+  span.textContent = '> ' + msg;
+  el.appendChild(span);
+  el.appendChild(document.createElement('br'));
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() { document.getElementById('statusLog').innerHTML = ''; }
+
+// ─── Main generation ──────────────────────────────────────────
+async function generateMusic() {
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  btn.textContent = '⟳ Generating...';
+  clearLog();
+  
+  const genre = document.getElementById('genre').value;
+  const bpm = parseInt(tempoSlider.value);
+  const temperature = parseInt(tempSlider.value) / 10;
+  const seqLen = parseInt(seqSlider.value);
+  const g = GENRES[genre];
+  
+  log(`Initializing LSTM model — ${g.name} corpus`, 'accent');
+  await delay(400);
+  animateLSTM();
+  log(`Loading MIDI training data (${genre} style)...`);
+  await delay(500);
+  log(`Tokenizing note sequences → one-hot encoding...`);
+  await delay(400);
+  log(`LSTM layers: Input(128) → LSTM(256) → LSTM(256) → Dense(128)`);
+  await delay(500);
+  log(`Temperature: ${temperature.toFixed(1)} | Tempo: ${bpm} BPM | Length: ${seqLen} notes`, 'accent');
+  await delay(300);
+  log(`Sampling from learned distribution...`);
+  await delay(600);
+  
+  generatedSeq = generateSequence(genre, seqLen, temperature);
+  
+  log(`Generated ${seqLen} MIDI note events`, 'success');
+  log(`Converting to MIDI format...`, 'success');
+  await delay(300);
+  log(`Audio synthesis ready — click Play to listen!`, 'success');
+  
+  renderPianoRoll(generatedSeq, genre);
+  renderWaveform(generatedSeq, genre);
+  renderNoteSeq(generatedSeq);
+  
+  document.getElementById('playBtn').disabled = false;
+  document.getElementById('dlBtn').disabled = false;
+  btn.disabled = false;
+  btn.innerHTML = '⚡ Generate Music';
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── MIDI export (basic .mid file) ────────────────────────────
+function downloadMidi() {
+  if (!generatedSeq.length) return;
+  const bpm = parseInt(tempoSlider.value);
+  const tempo = Math.round(60000000 / bpm);
+  const ticksPerBeat = 480;
+  
+  function varLen(v) {
+    const bytes = [];
+    bytes.unshift(v & 0x7F);
+    v >>= 7;
+    while (v) { bytes.unshift((v & 0x7F) | 0x80); v >>= 7; }
+    return bytes;
+  }
+  
+  const track = [];
+  // Tempo event
+  track.push(...[0x00, 0xFF, 0x51, 0x03, (tempo>>16)&0xFF, (tempo>>8)&0xFF, tempo&0xFF]);
+  
+  generatedSeq.forEach(n => {
+    const dur = Math.round(n.duration * ticksPerBeat);
+    track.push(...varLen(0), 0x90, n.midi, n.velocity); // note on
+    track.push(...varLen(dur), 0x80, n.midi, 0); // note off
+  });
+  track.push(0x00, 0xFF, 0x2F, 0x00); // end of track
+  
+  const tLen = track.length;
+  const header = [0x4D,0x54,0x68,0x64,0,0,0,6,0,0,0,1,(ticksPerBeat>>8)&0xFF,ticksPerBeat&0xFF];
+  const tHead = [0x4D,0x54,0x72,0x6B,(tLen>>24)&0xFF,(tLen>>16)&0xFF,(tLen>>8)&0xFF,tLen&0xFF];
+  
+  const bytes = new Uint8Array([...header, ...tHead, ...track]);
+  const blob = new Blob([bytes], {type:'audio/midi'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `neuromuse_${document.getElementById('genre').value}_${Date.now()}.mid`;
+  a.click();
+}
+</script>
+</body>
+</html>

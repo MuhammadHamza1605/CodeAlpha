@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AskBot — FAQ Chatbot</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f0f4ff;
+    --surface: #ffffff;
+    --surface2: #f7f8ff;
+    --border: #e2e6f3;
+    --accent: #4f46e5;
+    --accent-light: #ede9fe;
+    --accent2: #7c3aed;
+    --text: #1e1b4b;
+    --muted: #6b7280;
+    --bot-bg: #ffffff;
+    --user-bg: #4f46e5;
+    --user-text: #ffffff;
+    --success: #10b981;
+    --tag: #ede9fe;
+    --tag-text: #4f46e5;
+  }
+
+  body {
+    background: var(--bg);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    background-image:
+      radial-gradient(circle at 20% 50%, rgba(79,70,229,0.07) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(124,58,237,0.07) 0%, transparent 50%);
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 28px;
+    animation: rise 0.5s ease both;
+  }
+
+  .badge {
+    display: inline-block;
+    background: var(--accent-light);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 10px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  h1 {
+    font-size: 40px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1.1;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle { color: var(--muted); font-size: 14px; margin-top: 6px; }
+
+  .chat-container {
+    width: 100%;
+    max-width: 720px;
+    background: var(--surface);
+    border-radius: 24px;
+    box-shadow: 0 4px 40px rgba(79,70,229,0.12), 0 1px 0 var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 600px;
+    overflow: hidden;
+    animation: rise 0.5s ease 0.1s both;
+  }
+
+  .chat-topbar {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface2);
+  }
+
+  .bot-avatar {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .bot-info { flex: 1; }
+  .bot-name { font-weight: 700; color: var(--text); font-size: 15px; }
+  .bot-status { font-size: 12px; color: var(--success); font-family: 'JetBrains Mono', monospace; display: flex; align-items: center; gap: 5px; }
+  .bot-status::before { content: ''; width: 6px; height: 6px; background: var(--success); border-radius: 50%; display: inline-block; animation: blink 2s infinite; }
+
+  .nlp-badge { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--muted); background: var(--border); padding: 3px 8px; border-radius: 6px; }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-behavior: smooth;
+  }
+
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .msg {
+    display: flex;
+    gap: 10px;
+    animation: msgIn 0.3s ease both;
+  }
+
+  .msg.user { flex-direction: row-reverse; }
+
+  .msg-avatar {
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+    background: var(--accent-light);
+  }
+  .msg.user .msg-avatar { background: var(--user-bg); }
+
+  .msg-content { max-width: 75%; }
+
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bot-bg);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+
+  .msg.user .bubble {
+    background: var(--user-bg);
+    color: var(--user-text);
+    border-color: transparent;
+    border-radius: 16px 4px 16px 16px;
+  }
+  .msg:not(.user) .bubble { border-radius: 4px 16px 16px 16px; }
+
+  .confidence {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted);
+  }
+
+  .conf-bar { height: 3px; border-radius: 2px; background: var(--border); width: 60px; overflow: hidden; }
+  .conf-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s ease; }
+
+  .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .suggestion-chip {
+    background: var(--tag);
+    color: var(--tag-text);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  .suggestion-chip:hover { background: var(--accent); color: white; transform: translateY(-1px); }
+
+  .typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+    background: var(--bot-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px 16px 16px 16px;
+    width: fit-content;
+  }
+  .typing-dot { width: 7px; height: 7px; background: var(--muted); border-radius: 50%; animation: typing 1.2s infinite; }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  .input-area {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    background: var(--surface2);
+  }
+
+  .input-wrap { flex: 1; position: relative; }
+
+  #userInput {
+    width: 100%;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 16px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+    resize: none;
+    max-height: 100px;
+    overflow-y: auto;
+    line-height: 1.5;
+  }
+  #userInput:focus { border-color: var(--accent); }
+  #userInput::placeholder { color: var(--muted); }
+
+  .send-btn {
+    width: 44px; height: 44px;
+    background: var(--accent);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: white;
+    font-size: 18px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .send-btn:hover { background: var(--accent2); transform: scale(1.05); }
+
+  .faq-panel {
+    width: 100%;
+    max-width: 720px;
+    margin-top: 16px;
+    animation: rise 0.5s ease 0.2s both;
+  }
+
+  .faq-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 10px;
+  }
+
+  .faq-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .faq-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 7px 14px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 500;
+  }
+  .faq-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes typing { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="badge">CodeAlpha · Task 2</div>
+  <h1>Ask<span>Bot</span></h1>
+  <p class="subtitle">NLP-powered FAQ assistant using cosine similarity matching</p>
+</div>
+
+<div class="chat-container">
+  <div class="chat-topbar">
+    <div class="bot-avatar">🤖</div>
+    <div class="bot-info">
+      <div class="bot-name">AskBot Assistant</div>
+      <div class="bot-status">online · NLP active</div>
+    </div>
+    <span class="nlp-badge">TF-IDF + Cosine</span>
+  </div>
+
+  <div class="messages" id="messages">
+    <div class="msg">
+      <div class="msg-avatar">🤖</div>
+      <div class="msg-content">
+        <div class="bubble">
+          👋 Hi! I'm <strong>AskBot</strong>, an NLP-powered FAQ assistant.<br><br>
+          I use <strong>TF-IDF vectorization</strong> and <strong>cosine similarity</strong> to match your question with the most relevant answer from my knowledge base.<br><br>
+          Ask me anything or try one of the quick questions below!
+        </div>
+        <div class="suggestions">
+          <button class="suggestion-chip" onclick="quickAsk('What is your return policy?')">Return policy?</button>
+          <button class="suggestion-chip" onclick="quickAsk('How do I reset my password?')">Reset password?</button>
+          <button class="suggestion-chip" onclick="quickAsk('How can I contact support?')">Contact support?</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrap">
+      <textarea id="userInput" placeholder="Ask a question..." rows="1"></textarea>
+    </div>
+    <button class="send-btn" id="sendBtn" onclick="handleSend()">➤</button>
+  </div>
+</div>
+
+<div class="faq-panel">
+  <div class="faq-title">// Quick FAQ Topics</div>
+  <div class="faq-chips" id="faqChips"></div>
+</div>
+
+<script>
+// ─── FAQ Knowledge Base ───────────────────────────────────────
+const FAQ = [
+  { q: "What is your return policy?", a: "You can return any item within 30 days of purchase for a full refund. Items must be unused, in original packaging. To initiate a return, go to your order history and click 'Request Return'." },
+  { q: "How do I reset my password?", a: "To reset your password, click 'Forgot Password' on the login page, enter your email address, and we'll send you a reset link. The link expires in 24 hours. Check your spam folder if you don't see it." },
+  { q: "How can I contact support?", a: "You can reach our support team 24/7 via live chat on our website, email at support@example.com, or by calling +1-800-SUPPORT. Average response time is under 2 hours for emails." },
+  { q: "How long does shipping take?", a: "Standard shipping takes 5–7 business days. Express shipping (2–3 days) and overnight options are available at checkout. Free standard shipping is included on all orders over $50." },
+  { q: "What payment methods do you accept?", a: "We accept Visa, MasterCard, American Express, PayPal, Apple Pay, Google Pay, and bank transfers. All payments are secured with 256-bit SSL encryption." },
+  { q: "Can I cancel or change my order?", a: "Orders can be cancelled or modified within 1 hour of placement. After that, if the order has been processed, you'll need to use our return process once delivered. Contact support immediately for urgent changes." },
+  { q: "Do you offer international shipping?", a: "Yes! We ship to over 50 countries. International shipping costs and times vary by destination (typically 10–21 business days). Customs duties may apply and are the buyer's responsibility." },
+  { q: "How do I track my order?", a: "Once shipped, you'll receive an email with a tracking number. You can also log in to your account and visit 'My Orders' to see real-time shipping updates." },
+  { q: "Is my personal data secure?", a: "Absolutely. We follow GDPR and CCPA guidelines. Your data is encrypted at rest and in transit. We never sell personal data to third parties. You can download or delete your data at any time from account settings." },
+  { q: "Do you have a loyalty program?", a: "Yes! Our Rewards Club gives you 1 point per $1 spent. At 500 points you get a $10 discount. Points never expire and can be redeemed on any purchase. Sign up for free in your account dashboard." },
+  { q: "What is your privacy policy?", a: "Our full privacy policy is available at our website. In short: we collect only data necessary to provide our service, never sell it, and give you full control over your information." },
+  { q: "How do I create an account?", a: "Click 'Sign Up' on the top right of our website, enter your email and create a password, then verify your email. You can also sign up instantly using Google or Apple login." },
+  { q: "What if I receive a damaged item?", a: "We're so sorry! Please take a photo of the damaged item and contact support within 7 days. We'll send a replacement or issue a full refund — your choice — at no cost to you." },
+  { q: "Are there any discounts or coupons?", a: "Sign up to our newsletter for a 10% welcome discount. We also run seasonal sales (Black Friday, Summer Sale) and offer student and military discounts. Check our Promotions page for active deals." },
+  { q: "How do I update my billing information?", a: "Log in and go to Account Settings → Payment Methods. You can add, remove, or update payment details there. Changes apply to future orders only." },
+];
+
+// ─── NLP: TF-IDF + Cosine Similarity ─────────────────────────
+
+function tokenize(text) {
+  const stopwords = new Set(['a','an','the','is','it','in','of','to','and','or','for','do','how','what','can','i','my','me','we','you','your','does','will','be','with','on','at','by','this','that','are','was','have','has','had','from','about','not','if','as','up','so','but','no','yes','get','its']);
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(w => w.length > 1 && !stopwords.has(w));
+}
+
+function buildTFIDF(docs) {
+  const N = docs.length;
+  const tokenized = docs.map(tokenize);
+  const dfMap = {};
+  tokenized.forEach(toks => {
+    [...new Set(toks)].forEach(t => { dfMap[t] = (dfMap[t] || 0) + 1; });
+  });
+  const idf = {};
+  Object.keys(dfMap).forEach(t => { idf[t] = Math.log((N + 1) / (dfMap[t] + 1)) + 1; });
+
+  const vectors = tokenized.map(toks => {
+    const tf = {};
+    toks.forEach(t => { tf[t] = (tf[t] || 0) + 1; });
+    const v = {};
+    Object.keys(tf).forEach(t => { v[t] = (tf[t] / toks.length) * (idf[t] || 1); });
+    return v;
+  });
+  return { vectors, idf };
+}
+
+function cosineSim(a, b) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let dot = 0, magA = 0, magB = 0;
+  keys.forEach(k => {
+    const av = a[k] || 0, bv = b[k] || 0;
+    dot += av * bv; magA += av * av; magB += bv * bv;
+  });
+  if (!magA || !magB) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+function vectorize(text, idf) {
+  const toks = tokenize(text);
+  const tf = {};
+  toks.forEach(t => { tf[t] = (tf[t] || 0) + 1; });
+  const v = {};
+  Object.keys(tf).forEach(t => { v[t] = (tf[t] / toks.length) * (idf[t] || 0.5); });
+  return v;
+}
+
+// Build index
+const questions = FAQ.map(f => f.q);
+const { vectors: faqVecs, idf } = buildTFIDF(questions);
+
+function findBestMatch(query) {
+  const qVec = vectorize(query, idf);
+  let best = -1, bestIdx = 0;
+  faqVecs.forEach((v, i) => {
+    const sim = cosineSim(qVec, v);
+    if (sim > best) { best = sim; bestIdx = i; }
+  });
+  return { faq: FAQ[bestIdx], score: best, index: bestIdx };
+}
+
+// ─── UI Logic ─────────────────────────────────────────────────
+
+const messagesEl = document.getElementById('messages');
+const userInput = document.getElementById('userInput');
+
+// Render FAQ chips
+const faqChips = document.getElementById('faqChips');
+FAQ.slice(0, 8).forEach(f => {
+  const chip = document.createElement('button');
+  chip.className = 'faq-chip';
+  chip.textContent = f.q;
+  chip.onclick = () => quickAsk(f.q);
+  faqChips.appendChild(chip);
+});
+
+function scrollBottom() {
+  setTimeout(() => { messagesEl.scrollTop = messagesEl.scrollHeight; }, 50);
+}
+
+function addMsg(text, isUser, confidence=null, suggestions=[]) {
+  const div = document.createElement('div');
+  div.className = 'msg' + (isUser ? ' user' : '');
+  const confPct = confidence !== null ? Math.round(confidence * 100) : null;
+
+  let confHTML = '';
+  if (!isUser && confidence !== null) {
+    const color = confidence > 0.5 ? '#4f46e5' : confidence > 0.25 ? '#f59e0b' : '#ef4444';
+    confHTML = `
+      <div class="confidence">
+        <div class="conf-bar"><div class="conf-fill" style="width:${Math.max(confPct,8)}%;background:${color}"></div></div>
+        <span>match: ${confPct}%</span>
+      </div>`;
+  }
+
+  let sugsHTML = '';
+  if (suggestions.length) {
+    sugsHTML = `<div class="suggestions">${suggestions.map(s => `<button class="suggestion-chip" onclick="quickAsk('${s.replace(/'/g,"\\'")}'">${s}</button>`).join('')}</div>`;
+  }
+
+  div.innerHTML = `
+    <div class="msg-avatar">${isUser ? '👤' : '🤖'}</div>
+    <div class="msg-content">
+      <div class="bubble">${text}</div>
+      ${confHTML}
+      ${sugsHTML}
+    </div>`;
+  messagesEl.appendChild(div);
+  scrollBottom();
+}
+
+function showTyping() {
+  const div = document.createElement('div');
+  div.className = 'msg'; div.id = 'typing';
+  div.innerHTML = `
+    <div class="msg-avatar">🤖</div>
+    <div class="msg-content">
+      <div class="typing-indicator">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>
+    </div>`;
+  messagesEl.appendChild(div);
+  scrollBottom();
+}
+
+function removeTyping() {
+  const el = document.getElementById('typing');
+  if (el) el.remove();
+}
+
+function getRelated(idx) {
+  return FAQ.filter((_, i) => i !== idx).slice(0, 3).map(f => f.q);
+}
+
+function respond(query) {
+  const { faq, score } = findBestMatch(query);
+  const related = getRelated(FAQ.indexOf(faq)).slice(0, 2);
+
+  let answer, confidence;
+  if (score < 0.05) {
+    answer = "🤔 I couldn't find a good match for your question. Could you rephrase it? You can also try one of the FAQ topics below.";
+    confidence = score;
+  } else {
+    answer = faq.a;
+    confidence = score;
+  }
+
+  removeTyping();
+  addMsg(answer, false, confidence, score < 0.05 ? [] : related);
+}
+
+function quickAsk(text) {
+  userInput.value = text;
+  handleSend();
+}
+
+function handleSend() {
+  const text = userInput.value.trim();
+  if (!text) return;
+  addMsg(text, true);
+  userInput.value = '';
+  userInput.style.height = 'auto';
+  showTyping();
+  setTimeout(() => respond(text), 600 + Math.random() * 400);
+}
+
+userInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+});
+
+userInput.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+});
+</script>
+</body>
+</html>
