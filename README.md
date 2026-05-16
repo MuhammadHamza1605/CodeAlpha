@@ -160,7 +160,7 @@ No installation or build step is required. Each task is a self-contained HTML fi
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/CodeAlpha_AI_Projects.git
+git clone https://github.com/MuhammadHamza1605/CodeAlpha.git
 
 # Navigate into the folder
 cd CodeAlpha_AI_Projects
